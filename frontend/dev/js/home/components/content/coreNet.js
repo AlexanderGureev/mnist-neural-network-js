@@ -1,14 +1,22 @@
 import random from "random";
-import * as math from "mathjs";
+import GPU from "gpu.js";
+import {
+  matrix,
+  transpose,
+  multiply,
+  dotMultiply,
+  map,
+  subtract,
+  add,
+  flatten
+} from "mathjs";
 
 const createRandomNormalMatrix = (n, m, nodes) => {
   const rand = random.normal(0, Math.pow(nodes, -0.5));
   const _array = Array.from({ length: n }).map(e =>
     Array.from({ length: m }, x => rand())
   );
-  const matrix = math.matrix(_array);
-
-  return matrix;
+  return matrix(_array);
 };
 
 class CoreNet {
@@ -23,60 +31,143 @@ class CoreNet {
 
     this.lRate = lerningRate;
     this.activationFn = x => 1 / (1 + Math.exp(-x));
+    this.gpu = new GPU();
   }
 
-  get _wih() {
-    return this.wih._size;
+  directDistCalc = inputs => {
+    const { wih, who, activationFn } = this;
+
+    const hiddenInputs = multiply(wih, inputs);
+    const hiddenOutputs = map(hiddenInputs, activationFn);
+
+    const finalInputs = multiply(who, hiddenOutputs);
+    const finalOutputs = map(finalInputs, activationFn);
+
+    return {
+      hiddenInputs,
+      hiddenOutputs,
+      finalInputs,
+      finalOutputs
+    };
+  };
+
+  gpuMultiply = (a, b) => {
+    const multiplyMatrix = this.gpu.createKernel(function(a, b) {
+      var sum = 0;
+      for (var i = 0; i < 2; i++) {
+        sum += a[this.thread.y][i] * b[i][this.thread.x];
+      }
+      return sum;
+    }).setOutput([3, 3]);
+  }
+  testGpu = () => {
+    const A = matrix([[3, 1], [1, 2]]);
+    const B = matrix([[2, 2], [3, 1]]);
+
+    const gpu = new GPU();
+
+    const options = {
+      constants: { size: A._size[1] },
+      output: [A._size[0], B._size[1] ],
+    };
+
+    const multiplyMatrix = gpu.createKernel(function(a, b) {
+      let sum = 0;
+      for (let i = 0; i < this.constants.size; i++) {
+        sum += a[this.thread.y][i] * b[i][this.thread.x];
+      }
+      return sum;
+    }, options);
+    
+    const res = multiplyMatrix(A._data, B._data)
+    console.log(res)
+  }
+  normalizeDataset = dataset => {
+    const _outputNormalize = output => output.map(item => (item === 1 ? 0.99 : 0.01));
+      
+    const normalizedDataset = dataset.reduce((acc, { input, output }) => {
+      return [...acc, { input, output: _outputNormalize(output) }];
+    }, []);
+
+    return normalizedDataset;
+  };
+
+  testingNetwork = testSet => {
+    const correctAnswer = 0.99;
+    const normalizedDataset = this.normalizeDataset(testSet);
+    
+    const testValues = normalizedDataset.map(({ output }) => output.indexOf(correctAnswer));
+    console.log(`Test input values: ${testValues}`);
+
+    const resultsTesting = normalizedDataset.map(({ input }) => this.query(input));
+    const flattedResultsTesting = resultsTesting.map(({ _data }) => flatten(_data));
+    const outputValues = flattedResultsTesting.map(output => output.indexOf(Math.max(...output)));
+
+    console.log(`Test output values: ${outputValues}`);
+
+    const matches = testValues.reduce((acc, x, i) => {
+      return x === outputValues[i] ? acc + 1 : acc;
+    }, 0);
+
+    const precision = matches / testValues.length;
+    console.log(`Precision: ${precision * 100}%`);
   }
 
   query(inputList) {
-    const inputs = math.transpose(math.matrix([inputList]));
-
-    const hiddenInputs = math.multiply(this.wih, inputs);
-    const hiddenOutputs = math.map(hiddenInputs, this.activationFn);
-
-    const finalInputs = math.multiply(this.who, hiddenOutputs);
-    const finalOutputs = math.map(finalInputs, this.activationFn);
-
+    const inputs = transpose(matrix([inputList]));
+    const { finalOutputs } = this.directDistCalc(inputs);
     return finalOutputs;
   }
 
-  train(inputList, targetList) {
-    const inputs = math.transpose(math.matrix([inputList]));
-    const targets = math.transpose(math.matrix([targetList]));
+  trainNetwork(trainingSet, epochs = 1) {
+    const normalizedDataset = this.normalizeDataset(trainingSet);
 
-    const hiddenInputs = math.multiply(this.wih, inputs);
-    const hiddenOutputs = math.map(hiddenInputs, this.activationFn);
+    console.time("timer");
+    for (let i = 0; i < epochs; i++) {
+      console.log(`Epoch: ${i}`);
+      normalizedDataset.forEach(({ input, output }, i) => {
+        console.log(`Number of training sample: ${i}`);
+        this._train(input, output)
+      });
+    }
+    console.timeEnd("timer");
+  }
 
-    const finalInputs = math.multiply(this.who, hiddenOutputs);
-    const finalOutputs = math.map(finalInputs, this.activationFn);
+  _train(inputList, targetList) {
+    const { who, wih, lRate, directDistCalc } = this;
 
-    const outputErrors = math.matrix(math.subtract(targets, finalOutputs));
-    const hiddenErrors = math.multiply(math.transpose(this.who), outputErrors);
+    const inputs = transpose(matrix([inputList]));
+    const targets = transpose(matrix([targetList]));
 
-    const dMul = math.dotMultiply;
-    const mul = math.multiply;
+    const { hiddenOutputs, finalOutputs } = directDistCalc(inputs);
 
-    const resMultiplyWih = mul(
-      dMul(
-        dMul(hiddenErrors, hiddenOutputs),
-        math.matrix(math.subtract(1, hiddenOutputs))
-      ),
-      math.transpose(inputs)
+    const outputErrors = matrix(subtract(targets, finalOutputs));
+    const hiddenErrors = multiply(transpose(who), outputErrors);
+
+    const deltaWeightWih = dotMultiply(
+      lRate,
+      multiply(
+        dotMultiply(
+          dotMultiply(hiddenErrors, hiddenOutputs),
+          matrix(subtract(1, hiddenOutputs))
+        ),
+        transpose(inputs)
+      )
     );
-    const deltaWeightWih = dMul(this.lRate, resMultiplyWih);
 
-    const resMultiplyWho = mul(
-      dMul(
-        dMul(outputErrors, finalOutputs),
-        math.matrix(math.subtract(1, finalOutputs))
-      ),
-      math.transpose(hiddenOutputs)
+    const deltaWeightWho = dotMultiply(
+      lRate,
+      multiply(
+        dotMultiply(
+          dotMultiply(outputErrors, finalOutputs),
+          matrix(subtract(1, finalOutputs))
+        ),
+        transpose(hiddenOutputs)
+      )
     );
-    const deltaWeightWho = dMul(this.lRate, resMultiplyWho);
 
-    this.who = math.add(this.who, deltaWeightWho);
-    this.wih = math.add(this.wih, deltaWeightWih);
+    this.who = add(who, deltaWeightWho);
+    this.wih = add(wih, deltaWeightWih);
   }
 }
 

@@ -15,7 +15,7 @@
   "devDependencies": {
     "autoprefixer": "^9.4.2",
     "babel-core": "^6.26.3",
-    "babel-loader": "^8.0.4",
+    "babel-loader": "^7.1.5",
     "babel-minify-webpack-plugin": "^0.3.1",
     "babel-plugin-import": "^1.11.0",
     "babel-plugin-transform-runtime": "^6.23.0",
@@ -52,6 +52,7 @@
     "axios": "^0.18.0",
     "babel-runtime": "^6.26.0",
     "classnames": "^2.2.6",
+    "gpu.js": "^1.10.4",
     "lodash": "^4.17.11",
     "mathjs": "^5.3.1",
     "mnist": "^1.1.0",
