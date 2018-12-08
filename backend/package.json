@@ -1,0 +1,44 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "./bin/main.js",
+  "license": "MIT",
+  "scripts": {
+    "deletePublic": "./deletePublic.sh",
+    "createPublic": "cd ../ && yarn start && ./createPublic.sh",
+    "preBuild": "cd ../ && yarn run build && ./createPublic.sh",
+    "start": "NODE_ENV=production node ./bin/main.js",
+    "dev-front": "npm run deletePublic && NODE_ENV=none nodemon ./bin/main.js",
+    "dev": "npm run createPublic && NODE_ENV=development nodemon ./bin/main.js",
+    "build": "npm run preBuild && gulp heroku-build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "async": "^2.6.1",
+    "axios": "^0.18.0",
+    "bcryptjs": "^2.4.3",
+    "bluebird": "^3.5.3",
+    "colors": "^1.3.2",
+    "cookie": "^0.3.1",
+    "crypto": "^1.0.1",
+    "del": "^3.0.0",
+    "koa": "^2.6.2",
+    "koa-bodyparser": "^4.2.1",
+    "koa-compose": "^4.1.0",
+    "koa-compress": "^3.0.0",
+    "koa-convert": "^1.2.0",
+    "koa-csrf": "^3.0.6",
+    "koa-ejs": "^4.1.2",
+    "koa-favicon": "^2.0.1",
+    "koa-generic-session": "^2.0.1",
+    "koa-helmet": "^4.0.0",
+    "koa-logger": "^3.2.0",
+    "koa-redis": "^3.1.3",
+    "koa-router": "^7.4.0",
+    "koa-static": "^5.0.0",
+    "redis": "^2.8.0"
+  },
+  "devDependencies": {
+    "koa-webpack": "^5.1.1"
+  }
+}
