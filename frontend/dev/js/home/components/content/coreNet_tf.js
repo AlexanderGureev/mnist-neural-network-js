@@ -6,11 +6,13 @@ const initializeNeuralNetwork = () => {
   const config_hidden = {
     inputShape: [784],
     activation: "sigmoid",
-    units: 100
+    units: 100,
+    kernelInitializer: 'VarianceScaling',
   };
   const config_output = {
     units: 10,
-    activation: "sigmoid"
+    activation: "sigmoid",
+    kernelInitializer: 'VarianceScaling',
   };
 
   const hidden = tf.layers.dense(config_hidden);
@@ -23,7 +25,8 @@ const initializeNeuralNetwork = () => {
 
   const config = {
     optimizer: optimize,
-    loss: "meanSquaredError"
+    loss: "meanSquaredError",
+    metrics: ['accuracy'],
   };
 
   model.compile(config);
@@ -35,11 +38,11 @@ const initializeNeuralNetwork = () => {
 const _train = async (model, inputs, outputs) => {
   const callbacks = { 
     onEpochEnd: async (epoch, log) => {
-      console.log(`Epoch ${epoch}: loss = ${log.loss}`);
+      console.log(`Epoch ${epoch}: loss = ${log.loss}, acc = ${log.acc}`);
     }
   };
 
-  const res = await model.fit(inputs, outputs, { epochs: 5, callbacks });
+  const res = await model.fit(inputs, outputs, { epochs: 20, callbacks });
   return res;
 };
 
@@ -50,28 +53,42 @@ const normilizeDataset = dataset => {
   return { inputs, outputs };
 };
 
-export const trainNetwork = async (trainingSet, model, trainingAmount) => {
+export const trainNetwork = async (model, trainingSet, trainingAmount) => {
   const { inputs, outputs } = normilizeDataset(trainingSet);
 
   const inputsTensor = tf.tensor(inputs, [trainingAmount, 784]);
   const outputsTensor = tf.tensor(outputs, [trainingAmount, 10]);
 
   const res = await _train(model, inputsTensor, outputsTensor);
-  console.log(res.history);
   console.log('Training is Complete');
-  console.log('Predictions :');
   return model;
-
 };
 
-export const testNetwork = (model, testSet, testingAmount) => {
+const formateResults = mass => {
+  let tmp = [], res = [];
+  mass.forEach((item, i) => {
+    tmp.push(item);
+
+    if(++i % 10 === 0) {
+      res.push(tmp);
+      tmp = [];
+    }
+  });
+  return res;
+};
+
+export const testNetwork = async (model, testSet, testingAmount) => {
   const { inputs, outputs } = normilizeDataset(testSet);
 
   const inputsTensor = tf.tensor(inputs, [testingAmount, 784]);
   const outputsTensor = tf.tensor(outputs, [testingAmount, 10]);
 
-  outputsTensor.print();
-  model.predict(inputsTensor).print();
+  const x = await outputsTensor.data();
+  const y = await model.predict(inputsTensor).data();
 
+  const predicts = formateResults(y);
+  const target = formateResults(x).map(mass => mass.indexOf(1));
+
+  return { target, predicts };
 }
 export default initializeNeuralNetwork;
